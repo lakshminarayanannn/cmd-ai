@@ -150,7 +150,7 @@ Extraction mode: Recursive API fetch
 === NO NEED TO EXTRACT AGAIN ===
 
 """
-        return completion_message + content
+        return completion_message + "\n" + "Copied to clipboard"
 @tool
 def extract_content_local(directory: str, extensions: list[str] = None, clipboard_only: bool = False) -> str:
     """
