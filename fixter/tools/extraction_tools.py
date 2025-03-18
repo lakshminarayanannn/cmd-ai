@@ -88,27 +88,45 @@ Number of files found: {content.count('---- ')}
                 return f"Cannot extract owner/repo from URL: {git_url}"
                 
         repo = repo.replace('.git', '')
-        
         repo = re.sub(r'[^\w\-.]', '', repo)
-            
-        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents"
         
-        print(f"Original URL: {git_url}")
-        print(f"Owner: {owner}, Repo: {repo}")
-        print(f"Making request to: {api_url}")
-
-        response = requests.get(api_url)
-        response.raise_for_status()
-        files = response.json()
-
         content = ""
-        for file in files:
-            if file.get('type') == 'file' and (not extensions or any(file['name'].endswith(ext) for ext in extensions)):
-                download_url = file.get('download_url')
-                if download_url:
-                    dl_resp = requests.get(download_url)
-                    dl_resp.raise_for_status()
-                    content += f'\n---- {file["name"]} ----\n\n{dl_resp.text}'
+        headers = {"User-Agent": "Fixter-Content-Extractor"}
+        
+        # Recursive function to fetch directory contents
+        def fetch_directory_contents(path=""):
+            nonlocal content
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+            
+            print(f"Fetching from: {api_url}")
+            response = requests.get(api_url, headers=headers)
+            response.raise_for_status()
+            items = response.json()
+            
+            # Handle case where response is a single file
+            if not isinstance(items, list):
+                items = [items]
+            
+            for item in items:
+                if item.get('type') == 'file':
+                    # Check extension filter
+                    if not extensions or any(item['name'].endswith(ext) for ext in extensions):
+                        download_url = item.get('download_url')
+                        if download_url:
+                            dl_resp = requests.get(download_url, headers=headers)
+                            dl_resp.raise_for_status()
+                            file_path = f"{path}/{item['name']}" if path else item['name']
+                            content += f'\n---- {file_path} ----\n\n{dl_resp.text}'
+                elif item.get('type') == 'dir':
+                    # Recursively process subdirectory
+                    subdir_path = f"{path}/{item['name']}" if path else item['name']
+                    fetch_directory_contents(subdir_path)
+        
+        # Start fetching from root
+        try:
+            fetch_directory_contents()
+        except requests.exceptions.RequestException as e:
+            return f"Error accessing GitHub API: {str(e)}"
 
         if not content:
             return "No file content extracted from GitHub repository."
@@ -128,6 +146,7 @@ Number of files found: {content.count('---- ')}
 Repository: {git_url}
 File types: {extensions if extensions else 'All files'}
 Number of files found: {content.count('---- ')}
+Extraction mode: Recursive API fetch
 === NO NEED TO EXTRACT AGAIN ===
 
 """
